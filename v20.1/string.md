@@ -6,22 +6,17 @@ toc: true
 
 The `STRING` [data type](data-types.html) stores a string of Unicode characters.
 
-## Aliases
+## Subtypes and aliases
 
-In CockroachDB, the following are aliases for `STRING`:
+CockroachDB supports the following `STRING` subtypes for PostgreSQL compatibility:
 
-- `CHARACTER`
-- `CHAR`
-- `VARCHAR`
-- `TEXT`
+Subtype                                                               | Description                  
+----------------------------------------------------------------------|------------------------------
+`CHARACTER`, `CHARACTER(n)`, `CHAR`, `CHAR(n)`                        | Fixed-length                
+`CHARACTER VARYING`, `CHARACTER VARYING(n)`, `VARCHAR`, `VARCHAR(n)`  | Variable-length, with a limit  
+`TEXT`                                                                | Variable-length, with no limit
 
-And the following are aliases for `STRING(n)`:
-
-- `CHARACTER(n)`
-- `CHARACTER VARYING(n)`
-- `CHAR(n)`
-- `CHAR VARYING(n)`
-- `VARCHAR(n)`  
+By default, `STRING` values are variable-length, with a limit. As such, `CHARACTER VARYING` and `VARCHAR` types are aliases for `STRING`.
 
 ## Length
 
@@ -115,7 +110,7 @@ The size of a `STRING` value is variable, but it's recommended to keep values un
 
 Type | Details
 -----|--------
-`ARRAY` | Requires supported [`ARRAY`](array.html) string format, e.g., `'{1,2,3}'`.<br>Limited to `ARRAY`s of type [`INT`](int.html) and [`DECIMAL`](decimal.html). 
+`ARRAY` | Requires supported [`ARRAY`](array.html) string format, e.g., `'{1,2,3}'`.<br>Limited to `ARRAY`s of type [`INT`](int.html) and [`DECIMAL`](decimal.html).
 `BIT` | Requires supported [`BIT`](bit.html) string format, e.g., `'101001'`.
 `BOOL` | Requires supported [`BOOL`](bool.html) string format, e.g., `'true'`.
 `BYTES` | For more details, [see here](bytes.html#supported-conversions).
