@@ -20,7 +20,12 @@ You can restore:
 
 ## Required privileges
 
-Only members of the `admin` role can run `RESTORE`. By default, the `root` user belongs to the `admin` role.
+- Full cluster restores can only be run by members of the `admin` role. By default, the `root` user belongs to the `admin` role.
+- For all other restores, the user must have write access (`CREATE` or `INSERT`) on all objects affected.
+
+### Source privileges
+
+{% include {{ page.version.version }}/misc/source-privileges.md %}
 
 ## Synopsis
 

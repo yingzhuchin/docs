@@ -104,6 +104,7 @@ GEM
       unicode-display_width (~> 1.1, >= 1.1.1)
     unicode-display_width (1.7.0)
     verbal_expressions (0.1.5)
+    webrick (1.7.0)
 
 PLATFORMS
   ruby
@@ -120,6 +121,7 @@ DEPENDENCIES
   redcarpet (~> 3.4)
   rss
   sassc (~> 2.2)
+  webrick
 
 BUNDLED WITH
    2.2.14
