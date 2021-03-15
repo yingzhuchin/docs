@@ -12,7 +12,7 @@ In CockroachDB, data is replicated and distributed across the nodes of a cluster
 
 In a cluster spread across multiple geographic regions, however, the distribution of data becomes a performance consideration. For that reason, it is important to think about the latency requirements of each table and then use the appropriate combination of [table localities](multiregion-overview.html#table-locality) to locate data for optimal performance.
 
-This tutorial walks you through the process of deploying a 9-node CockroachDB cluster across 3 US regions with 3 availability zones per region.  The application running on the cluster is a fictional vehicle-sharing application called [MovR](movr.html).
+This tutorial walks you through the process of deploying a 9-node CockroachDB cluster across 3 US regions with 3 availability zones per region in [Google Compute Engine (GCE)](https://cloud.google.com/compute).  The application running on the cluster is a fictional vehicle-sharing application called [MovR](movr.html).
 
 First, you'll see the effect of network latency when requests must move back and forth across the United States. Next, you'll apply the following multi-region [table localities](multiregion-overview.html#table-locality):
 
@@ -66,13 +66,9 @@ For your application, you'll use our open-source, fictional, peer-to-peer vehicl
 
 {% include {{ page.version.version }}/misc/movr-schema.md %}
 
-All of the tables except `promo_codes` have a multi-column primary key of `city` and `id`, in that order. This means that the rows in these tables are ordered by their geography. 
+All of the tables except `promo_codes` have a multi-column primary key of `city` and `id`, in that order. This means that the rows in these tables are ordered by their geography.  These tables are read from and written to very frequently. To keep read and write latency low, you'll use the [Regional table locality pattern](multiregion-overview.html#regional-by-row-tables) for these tables.
 
-These tables are read from and written to very frequently. To keep read and write latency low, you'll use the [Regional table locality pattern](multiregion-overview.html#regional-by-row-tables) for these tables.
-
-The data in the `promo_codes` table is different: it is not tied to geography, and it is rarely updated, or "read-mostly". This type of table is often referred to as a "reference table" or "lookup table". In this case, you'll use the [Global table locality pattern](multiregion-overview.html#global-tables) to keep read latencies low.
-
-(<strong><font style="size:xx-large" color="red">XXX</font></strong>: YOU ARE HERE)
+The data in the `promo_codes` table is different: it is not tied to geography, and it is rarely updated. This type of table is often referred to as a "reference table" or "lookup table". In this case, you'll use the [Global table locality pattern](multiregion-overview.html#global-tables) to keep read latencies low.
 
 #### The workflow
 
@@ -89,29 +85,34 @@ The data in the `promo_codes` table is different: it is not tied to geography, a
 
 ### Provision VMs
 
-You need 9 VMs across 3 GCE regions, 3 per region with each VM in a distinct availability zone. You also need 3 extra VMs, 1 per region, for a region-specific version of MovR and the HAProxy load balancer.
+You need 12 total VMs:
+
+- 9 VMs across 3 GCE regions for the CockroachDB cluster: 3 per region, with each VM in a distinct availability zone.
+- 3 VMs, 1 per region, to run a region-specific instance of the MovR application and the HAProxy load balancer.
+
+Create the VMs following the instructions below:
 
 1. [Create 9 VMs](https://cloud.google.com/compute/docs/instances/create-start-instance) for CockroachDB nodes.
 
     When creating each VM:
     - Use the [`n1-standard-4`](https://cloud.google.com/compute/docs/machine-types#standard_machine_types) machine type (4 vCPUs, 15 GB memory) and the Ubuntu 16.04 OS image.
-    - Select one of the following [region and availability zone](https://cloud.google.com/compute/docs/regions-zones/) configurations. Be sure to use each region/availability combination only once.
+    - Select one of the following [region and availability zone](https://cloud.google.com/compute/docs/regions-zones/) configurations. Be sure to use each region/availability zone combination only once.
 
-        VM | Region | Availability Zone
-        ---|--------|------------------
-        1 | `us-east1` | `us-east1-b`
-        2 | `us-east1` | `us-east1-c`
-        3 | `us-east1` | `us-east1-d`
-        4 | `us-central1` | `us-central1-a`
-        5 | `us-central1` | `us-central1-b`
-        6 | `us-central1` | `us-central1-c`
-        7 | `us-west1` | `us-west1-a`
-        8 | `us-west1` | `us-west1-b`
-        9 | `us-west1` | `us-west1-c`
+        VM | Region        | Availability Zone
+        ---|---------------|------------------
+        1  | `us-east1`    | `us-east1-b`
+        2  | `us-east1`    | `us-east1-c`
+        3  | `us-east1`    | `us-east1-d`
+        4  | `us-central1` | `us-central1-a`
+        5  | `us-central1` | `us-central1-b`
+        6  | `us-central1` | `us-central1-c`
+        7  | `us-west1`    | `us-west1-a`
+        8  | `us-west1`    | `us-west1-b`
+        9  | `us-west1`    | `us-west1-c`
     - [Create and mount a local SSD](https://cloud.google.com/compute/docs/disks/local-ssd#create_local_ssd).
-    - To apply the DB Console firewall rule you created earlier, click **Management, disk, networking, SSH keys**, select the **Networking** tab, and then enter `cockroachdb` in the **Network tags** field.
+    - To apply the DB Console firewall rule you [created earlier](#configure-your-network), click **Management, disk, networking, SSH keys**, select the **Networking** tab, and then enter `cockroachdb` in the **Network tags** field.
 
-2. [Create 3 VMs](https://cloud.google.com/compute/docs/instances/create-start-instance) for the region-specific versions of MovR and HAProxy, one in each of the regions mentioned above, using same machine types and OS image as mentioned above.
+2. [Create 3 VMs](https://cloud.google.com/compute/docs/instances/create-start-instance), one in each of the regions mentioned above, using the same machine type and OS image as mentioned above. Each will be used to run a region-specific instance of the MovR application and HAProxy load balancer.
 
 3. Note the internal IP address of each VM. You'll need these addresses when starting the CockroachDB nodes, configuring HAProxy, and running the MovR application.
 
@@ -126,9 +127,9 @@ Now that you have VMs in place, start your CockroachDB cluster across the three 
 
 ### Start nodes in US East
 
-1. SSH to the first VM in the US East region where you want to run a CockroachDB node.
+1. [SSH](https://linux.die.net/man/1/ssh) to the first VM in the US East region where you want to run a CockroachDB node.
 
-2. Download the [CockroachDB archive](https://binaries.cockroachdb.com/cockroach-{{ page.release_info.version }}.linux-amd64.tgz) for Linux, extract the binary, and copy it into the `PATH`:
+2. Download the [CockroachDB archive](https://binaries.cockroachdb.com/cockroach-{{ page.release_info.version }}.linux-amd64.tgz) for Linux, extract the binary, and copy it into your shell's `PATH`:
 
     {% include copy-clipboard.html %}
     ~~~ shell
@@ -157,13 +158,13 @@ Now that you have VMs in place, start your CockroachDB cluster across the three 
 
 4. Repeat steps 1 - 3 for the other two CockroachDB nodes in the region. Each time, be sure to:
     - Adjust the `--advertise-addr` flag.
-    - Use the appropriate availability zone of the VM in the `zone` portion of the `--locality` flag.
+    - Use the appropriate availability zone of the VM in the `zone` portion of the [`--locality` flag](cockroach-start.html#locality).
 
 ### Start nodes in US Central
 
 1. SSH to the first VM in the US Central region where you want to run a CockroachDB node.
 
-2. Download the [CockroachDB archive](https://binaries.cockroachdb.com/cockroach-{{ page.release_info.version }}.linux-amd64.tgz) for Linux, extract the binary, and copy it into the `PATH`:
+2. Download the [CockroachDB archive](https://binaries.cockroachdb.com/cockroach-{{ page.release_info.version }}.linux-amd64.tgz) for Linux, extract the binary, and copy it into your shell's `PATH`:
 
     {% include copy-clipboard.html %}
     ~~~ shell
@@ -192,13 +193,13 @@ Now that you have VMs in place, start your CockroachDB cluster across the three 
 
 4. Repeat steps 1 - 3 for the other two CockroachDB nodes in the region. Each time, be sure to:
     - Adjust the `--advertise-addr` flag.
-    - Use the appropriate availability zone of the VM in the `zone` portion of the `--locality` flag.
+    - Use the appropriate availability zone of the VM in the `zone` portion of the [`--locality` flag](cockroach-start.html#locality).
 
 ### Start nodes in US West
 
 1. SSH to the first VM in the US West region where you want to run a CockroachDB node.
 
-2. Download the [CockroachDB archive](https://binaries.cockroachdb.com/cockroach-{{ page.release_info.version }}.linux-amd64.tgz) for Linux, extract the binary, and copy it into the `PATH`:
+2. Download the [CockroachDB archive](https://binaries.cockroachdb.com/cockroach-{{ page.release_info.version }}.linux-amd64.tgz) for Linux, extract the binary, and copy it into your shell's `PATH`:
 
     {% include copy-clipboard.html %}
     ~~~ shell
@@ -227,11 +228,11 @@ Now that you have VMs in place, start your CockroachDB cluster across the three 
 
 4. Repeat steps 1 - 3 for the other two CockroachDB nodes in the region. Each time, be sure to:
     - Adjust the `--advertise-addr` flag.
-    - Use the appropriate availability zone of the VM in the `zone` portion of the `--locality` flag.
+    - Use the appropriate availability zone of the VM in the `zone` portion of the [`--locality` flag](cockroach-start.html#locality).
 
 ### Initialize the cluster
 
-On any of the VMs, run the one-time [`cockroach init`](cockroach-init.html) command to join the first nodes into a cluster:
+On any of the VMs, run the [`cockroach init`](cockroach-init.html) command to join the nodes into a cluster:
 
 {% include copy-clipboard.html %}
 ~~~ shell
@@ -240,15 +241,20 @@ $ cockroach init --insecure --host=<address of any node>
 
 ## Step 3. Start MovR
 
-- [Set up the client VMs](#set-up-the-client-vms)
+- [Set up the client VMs](#set-up-the-application-vms)
 - [Configure the cluster for MovR](#configure-the-cluster-for-movr)
 - [Start MovR in US East](#start-movr-in-us-east)
 - [Start MovR in US Central](#start-movr-in-us-central)
 - [Start MovR in US West](#start-movr-in-us-west)
 
-### Set up the client VMs
+### Set up the application VMs
 
-Next, install Docker and HAProxy on each client VM. Docker is required so you can later run MovR from a Docker image, and HAProxy will serve as the region-specific load balancer for MovR in each region.
+Next, install [Docker](https://www.docker.com) and HAProxy on each application VM:
+
+- Docker is required so that you can run MovR from a Docker image.
+- HAProxy will serve as the load balancer for the MovR instance in each region.
+
+Set up the VMs following the instructions below:
 
 1. SSH to the VM in the US East region where you want to run MovR and HAProxy.
 
@@ -271,15 +277,11 @@ Next, install Docker and HAProxy on each client VM. Docker is required so you ca
 
     {% include copy-clipboard.html %}
     ~~~ shell
-    $ sudo apt-get update
+    $ sudo apt-get update && \
+    sudo apt-get install haproxy
     ~~~
 
-    {% include copy-clipboard.html %}
-    ~~~ shell
-    $ sudo apt-get install haproxy
-    ~~~
-
-4. Download the [CockroachDB archive](https://binaries.cockroachdb.com/cockroach-{{ page.release_info.version }}.linux-amd64.tgz) for Linux, extract the binary, and copy it into the `PATH`:
+4. Download the [CockroachDB archive](https://binaries.cockroachdb.com/cockroach-{{ page.release_info.version }}.linux-amd64.tgz) for Linux, extract the binary, and copy it into your shell's `PATH`:
 
     {% include copy-clipboard.html %}
     ~~~ shell
@@ -292,9 +294,9 @@ Next, install Docker and HAProxy on each client VM. Docker is required so you ca
     $ sudo cp -i cockroach-{{ page.release_info.version }}.linux-amd64/cockroach /usr/local/bin/
     ~~~
 
-    The `cockroach` binary needs to be on these VMs so you can run some client commands built into the binary, such as the command in the next step and the command for starting the built-in SQL shell.
+    The `cockroach` binary needs to be on the application VMs so you can generate an HAProxy configuration and start [the built-in SQL shell](cockroach-sql.html).
 
-5. Run the [`cockroach gen haproxy`](cockroach-gen.html) command to generate an HAProxy config file, specifying the address of any CockroachDB node and the `--locality` of nodes in the US East region:
+5. Run the [`cockroach gen haproxy`](cockroach-gen.html) command to generate an HAProxy config file, specifying the address of any CockroachDB node and the [`--locality`](cockroach-start.html#locality) of nodes in the US East region:
 
     {% include copy-clipboard.html %}
     ~~~ shell
@@ -304,7 +306,7 @@ Next, install Docker and HAProxy on each client VM. Docker is required so you ca
     --locality=region=us-east1
     ~~~
 
-    The generated configuration file is called `haproxy.cfg` and looks as follows, with the `server` addresses pre-populated with just the nodes in US East based on the `--locality` flag used:
+    The generated configuration file is called `haproxy.cfg` and looks as follows, with the `server` addresses pre-populated with just the nodes in US East based on the [`--locality` flag](cockroach-start.html#locality) used:
 
     ~~~
     global
@@ -337,7 +339,7 @@ Next, install Docker and HAProxy on each client VM. Docker is required so you ca
     $ haproxy -f haproxy.cfg &
     ~~~
 
-7. Repeat the steps above for the client VMs in the other two regions. For each region, be sure to adjust the `--locality` flag when running the `cockroach gen haproxy` command.
+7. Repeat the steps above for the client VMs in the other two regions. For each region, be sure to adjust the [`--locality` flag](cockroach-start.html#locality) when running the [`cockroach gen haproxy`](cockroach-gen.html) command.
 
 ### Configure the cluster for MovR
 
@@ -381,7 +383,7 @@ Before you can run MovR against the cluster, you must create a `movr` database a
         ('region', 'us-west1', 43.804133, -120.554201);
     ~~~
 
-    Inserting these coordinates enables you to visualize your cluster on the [**Node Map**](enable-node-map.html) feature of the DB Console.
+    Inserting these coordinates enables you to visualize your cluster on the [**Node Map**](enable-node-map.html) feature of the [DB Console](admin-ui-overview.html).
 
 6. Exit the SQL shell:
 
@@ -396,7 +398,7 @@ Before you can run MovR against the cluster, you must create a `movr` database a
 Be sure to use the exact version of MovR specified in the commands: `movr:19.09.2`. This tutorial relies on the SQL schema in this specific version.
 {{site.data.alerts.end}}
 
-1. Still on the client VM in the US East region, load the MovR schema and initial data for the cities of New York, Chicago, and Seattle, pointing at the address of the US East load balancer:
+1. On the client VM in the US East region, run the following command to load the MovR schema and initial data for the cities of New York, Chicago, and Seattle, and to point at the address of the US East load balancer:
 
     {% include copy-clipboard.html %}
     ~~~ shell
@@ -484,11 +486,11 @@ Be sure to use the exact version of MovR specified in the commands: `movr:19.09.
 
 ## Step 4. Access the DB Console
 
-Now that you've deployed and configured your cluster, take a look at it in the DB Console:
+Now that you've deployed and configured your cluster, take a look at it in the [DB Console](admin-ui-overview.html):
 
 1. Open a browser and go to `http://<external address of any node>:8080`.
 
-2. On the **Cluster Overview** page, select **View: Node Map** to access the [Node Map](enable-node-map.html), which visualizes your CockroachDB cluster on a map of the US:
+2. On the [**Cluster Overview** page](ui-cluster-overview-page.html), select **View: Node Map** to access the [Node Map](enable-node-map.html), which visualizes your CockroachDB cluster on a map of the US:
 
     <img src="{{ 'images/v21.1/geo-partitioning-node-map-1.png' | relative_url }}" alt="Geo-partitioning node map" style="max-width:100%" />
 
@@ -502,15 +504,15 @@ Now that you've deployed and configured your cluster, take a look at it in the D
 
 ## Step 5. Check latency
 
-Use the DB Console to see the effect of network latency before applying multi-region data topologies.
+Use the [DB Console](admin-ui-overview.html) to see the effect of network latency before applying multi-region [table localities](multiregion-overview.html#table-locality).
 
-1. Still in the DB Console, click **Metrics** on the left and hover over the **Service Latency: SQL, 99th percentile** timeseries graph:
+1. Still in the DB Console, click [**Metrics**](ui-overview-dashboard.html) on the left and hover over the [**Service Latency: SQL, 99th percentile**](ui-overview-dashboard.html#service-latency-sql-99th-percentile) timeseries graph:
 
     <img src="{{ 'images/v21.1/geo-partitioning-sql-latency-before.png' | relative_url }}" alt="Geo-partitioning SQL latency" style="max-width:100%" />
 
     For each node, you'll see that the max latency of 99% of queries is in the 100s of milliseconds. To understand why SQL latency is so high, it's important to first look at how long it takes requests to physically travel between the nodes in your cluster.
 
-2. Click **Network Latency** in the left-hand navigation:
+2. Click [**Network Latency**](ui-network-latency-page.html) in the left-hand navigation:
 
     <img src="{{ 'images/v21.1/geo-partitioning-network-latency.png' | relative_url }}" alt="Geo-partitioning network latency" style="max-width:100%" />
 
@@ -523,6 +525,8 @@ Use the DB Console to see the effect of network latency before applying multi-re
     7 - 9 | `us-west1`
 
     As you can see, within a single region, round-trip latency is sub-millisecond. For example, between nodes 5 and 6 in the `us-central1` region, round-trip latency is 0.56ms. However, between nodes in different regions, round-trip latency is significantly higher. For example, between node 2 in `us-east1` and node 7 in `us-west`, round-trip latency is 66.43ms.
+
+(<strong><font style="size:xx-large" color="red">XXX</font></strong>: YOU ARE HERE)
 
 ## Step 6. Check replica distribution
 
