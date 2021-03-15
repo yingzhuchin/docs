@@ -1,70 +1,78 @@
 ---
 title: Low Latency Reads and Writes in a Multi-Region Cluster
-summary: Use data topologies to get low-latency reads and writes in a multi-region CockroachDB cluster.
+nsummary: Use data topologies to get low-latency reads and writes in a multi-region CockroachDB cluster.
 toc: true
-toc_not_nested: true
 redirect_from: demo-geo-partitioning.html
 key: demo-geo-partitioning.html
 ---
 
-In CockroachDB, data is replicated and distributed across the nodes of a cluster for consistency and resiliency, and [read and write requests are automatically routed between nodes](architecture/reads-and-writes-overview.html) as appropriate. In a single-region cluster, this behavior doesn't affect performance because network latency between nodes is sub-millisecond. In a cluster spread across multiple geographic regions, however, the distribution of data becomes a key performance bottleneck, and for that reason, it is important to think about the latency requirements of each table and then use the appropriate [data topologies](topology-patterns.html) to locate data for optimal performance.
+<span class="version-tag">New in v21.1:</span> CockroachDB has improved multi-region capabilities that make it easier to run global applications.  For an overview of these capabilities, see the [Multi-region Overview](multiregion-overview.html).
 
-This tutorial walks you through the process of deploying a 9-node CockroachDB cluster across 3 US regions, 3 AZs per region, with a fictional vehicle-sharing application called [MovR](movr.html) running concurrently in each region. Initially, you'll see the effect of network latency when requests must move back and forth across the US. Then you'll use two important multi-region data topologies, [Geo-Partitioned Replicas](topology-geo-partitioned-replicas.html) and [Duplicate Indexes](topology-duplicate-indexes.html), to remove this bottleneck and dramatically lower latency, with the majority of reads and writes executing in 2 milliseconds or less. Finally, you'll experience the cluster's resiliency to AZ-level failure.
+In CockroachDB, data is replicated and distributed across the nodes of a cluster for consistency and resiliency, and [read and write requests are automatically routed between nodes](architecture/reads-and-writes-overview.html). In a single-region cluster, this behavior doesn't affect performance because network latency between nodes is sub-millisecond.
 
-## See it in action
+In a cluster spread across multiple geographic regions, however, the distribution of data becomes a performance consideration. For that reason, it is important to think about the latency requirements of each table and then use the appropriate combination of [table localities](multiregion-overview.html#table-locality) to locate data for optimal performance.
 
-### Watch a demo
+This tutorial walks you through the process of deploying a 9-node CockroachDB cluster across 3 US regions with 3 availability zones per region.  The application running on the cluster is a fictional vehicle-sharing application called [MovR](movr.html).
 
-Watch [this webinar recording](https://www.cockroachlabs.com/webinars/implementation-topologies-for-distributed-sql
-) to see a demonstration of the concepts and features in this tutorial.
+First, you'll see the effect of network latency when requests must move back and forth across the United States. Next, you'll apply the following multi-region [table localities](multiregion-overview.html#table-locality):
 
-<!-- Older demo video
-<iframe width="640" height="385" src="https://www.youtube.com/embed/TgnQwOOk9Js" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe> -->
+- [Regional tables](multiregion-overview.html#regional-tables) provide low-latency reads and writes for an entire table from a single region.
+- [Global tables](multiregion-overview.html#global-tables) are optimized for low-latency reads from all regions.
 
-### Read a case study
+By combining these table localities appropriately, you will lower the latency of your queries so that the majority of reads and writes execute in a few milliseconds.
 
-Read about how an [electronic lock manufacturer](https://www.cockroachlabs.com/case-studies/european-electronic-lock-manufacturer-modernizes-iam-system-with-managed-cockroachdb/) and [multi-national bank](https://www.cockroachlabs.com/case-studies/top-five-multinational-bank-modernizes-its-european-core-banking-services-migrating-from-oracle-to-cockroachdb/) are using the Geo-Partitioned Replicas topology in production for improved performance and regulatory compliance.
+Finally, you'll test your multi-region cluster's ability to [survive zone-level failures](multiregion-overview.html#surviving-zone-failures) by killing a node and seeing that the cluster keeps working.
+
+{{site.data.alerts.callout_info}}
+This demo is designed to illustrate CockroachDB's multi-region capabilities.  It is not intended to show best practices for a production deployment.  For more information about production deployments of multi-region applications, see [Orchestrate CockroachDB Across Multiple Kubernetes Clusters](orchestrate-cockroachdb-with-kubernetes-multi-cluster.html) and the [Production Checklist](recommended-production-settings.html)
+{{site.data.alerts.end}}
 
 ## Before you begin
 
 - [Request a trial license](#request-a-trial-license)
-- [Review important concepts](#review-important-concepts)
+- [Review important CockroachDB concepts](#review-important-cockroachdb-concepts)
 - [Review the cluster setup](#review-the-cluster-setup)
 - [Review the MovR application](#review-the-movr-application)
 
 ### Request a trial license
 
-Some CockroachDB features used in this tutorial require an enterprise license, so [request a 30-day trial license](https://www.cockroachlabs.com/get-cockroachdb/) before you get started.
+(<strong><font style="size:xx-large" color="red">XXX</font></strong>: still needed in v21.1?)
+
+Some CockroachDB features used in this tutorial require an enterprise license, so [request a 30-day trial license](https://www.cockroachlabs.com/get-cockroachdb/enterprise/) before you get started.
 
 You should receive your trial license via email within a few minutes. You'll enable your license once your cluster is up-and-running.
 
-### Review important concepts
+### Review important CockroachDB concepts
 
 To understand performance in a geographically distributed CockroachDB cluster, it's important to first review [how reads and writes work in CockroachDB](architecture/reads-and-writes-overview.html).
 
 ### Review the cluster setup
 
-You'll deploy a 9-node CockroachDB cluster across 3 GCE regions, with each node on a VM in a distinct availability zone for optimal resiliency:
+You'll deploy a 9-node CockroachDB cluster across 3 GCE regions.  Each node will run on a VM in a distinct availability zone:
 
 <img src="{{ 'images/v21.1/topology-patterns/topology_multi-region_hardware.png' | relative_url }}" alt="Multi-region hardware setup" style="max-width:100%" />
 
 A few notes:
 
 - For each CockroachDB node, you'll use the [`n1-standard-4`](https://cloud.google.com/compute/docs/machine-types#standard_machine_types) machine type (4 vCPUs, 15 GB memory) with the Ubuntu 16.04 OS image and a [local SSD](https://cloud.google.com/compute/docs/disks/local-ssd#create_local_ssd) disk.
-- You'll start each node with the [`--locality` flag](cockroach-start.html#locality) describing the node's region and availability zone. Initially, this locality information will lead CockroachDB to evenly distribute data across the 3 regions. Then, it will be used to apply data topologies for lower latency.
-- There will be an extra VM in each region for an instance of the MovR application and the open-source HAProxy load balancer. The application in each region will be pointed at the local load balancer, which will direct connections only to the CockroachDB nodes in the same region.
+- You'll start each node with the [`--locality` flag](cockroach-start.html#locality) describing the node's region and availability zone. Initially, this locality information will lead CockroachDB to evenly distribute data across the 3 regions. Then, you will apply [table localities](multiregion-overview.html#table-locality) to optimize access access to each table's data for lower latency.
+- In addition to the 3 VMs in each region running CockroachDB, there will be 1 application VM running an instance of the [MovR application](movr.html) and the [HAProxy load balancer](https://www.haproxy.org), for a total of 12 VMs. The application VM in each region will be pointed at the locally running load balancer, which will direct connections to the CockroachDB nodes in the same region.
 
 ### Review the MovR application
 
-For your application, you'll use our open-source, fictional, peer-to-peer vehicle-sharing app, [MovR](movr.html). You'll run 3 instances of MovR, one in each US region, with each instance representing users in a specific city: New York, Chicago, or Seattle.
+For your application, you'll use our open-source, fictional, peer-to-peer vehicle-sharing app, [MovR](movr.html). You'll run 3 instances of MovR, one in each US region.  Each instance represents users in a specific city: New York, NY; Chicago, IL; or Seattle, WA.
 
 #### The schema
 
 {% include {{ page.version.version }}/misc/movr-schema.md %}
 
-All of the tables except `promo_codes` have a multi-column primary key of `city` and `id`, with `city` being the first in the key. As such, the rows in these tables are geographically specific and ordered by geography. These tables are read and updated very frequently, and so to keep read and write latency low, you'll use the [Geo-Partitioned Replicas](topology-geo-partitioned-replicas.html) topology for these tables.
+All of the tables except `promo_codes` have a multi-column primary key of `city` and `id`, in that order. This means that the rows in these tables are ordered by their geography. 
 
-In contrast, the data in the `promo_codes` table is not tied to geography, and the data is read frequently but rarely updated. This type of table is often referred to as a "reference table" or "lookup table". In this case, you'll use the [Duplicate Indexes](topology-duplicate-indexes.html) topology to keep just read latency very low, since that's primary.
+These tables are read from and written to very frequently. To keep read and write latency low, you'll use the [Regional table locality pattern](multiregion-overview.html#regional-by-row-tables) for these tables.
+
+The data in the `promo_codes` table is different: it is not tied to geography, and it is rarely updated, or "read-mostly". This type of table is often referred to as a "reference table" or "lookup table". In this case, you'll use the [Global table locality pattern](multiregion-overview.html#global-tables) to keep read latencies low.
+
+(<strong><font style="size:xx-large" color="red">XXX</font></strong>: YOU ARE HERE)
 
 #### The workflow
 
@@ -1145,12 +1153,9 @@ Given that most of the data in your cluster is geo-partitioned, let's focus on A
 
 ## See also
 
-- Related Topology Patterns
-    - [Geo-Partitioned Replicas Topology](topology-geo-partitioned-replicas.html)
-    - [Duplicate Indexes Topology](topology-duplicate-indexes.html)
-
-- Related Case Studies
-    - [Electronic lock manufacturer](https://www.cockroachlabs.com/case-studies/european-electronic-lock-manufacturer-modernizes-iam-system-with-managed-cockroachdb/)
-    - [Multi-national bank](https://www.cockroachlabs.com/case-studies/top-five-multinational-bank-modernizes-its-european-core-banking-services-migrating-from-oracle-to-cockroachdb/)
-
+- [Multi-region Overview](multiregion-overview.html)
+- [Choosing a multi-region configuration](choosing-a-multi-region-configuration.html)
+- [When to use `ZONE` vs. `REGION` survival goals](when-to-use-zone-vs-region-survival-goals.html)
+- [When to use `REGIONAL` vs. `GLOBAL` tables](when-to-use-regional-vs-global-tables.html)
 - [Reads and Writes in CockroachDB](architecture/reads-and-writes-overview.html)
+- [Install CockroachDB](install-cockroachdb.html)
