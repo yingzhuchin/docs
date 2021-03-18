@@ -38,28 +38,28 @@ To do a cluster backup, use the [`BACKUP`](backup.html) statement:
 
 {% include copy-clipboard.html %}
 ~~~ sql
-> BACKUP TO '<backup_location>';
+> BACKUP INTO '{destination}';
 ~~~
 
 If it's ever necessary, you can use the [`RESTORE`][restore] statement to restore a table:
 
 {% include copy-clipboard.html %}
 ~~~ sql
-> RESTORE TABLE bank.customers FROM '<backup_location>';
+> RESTORE TABLE bank.customers FROM '{destination}';
 ~~~
 
 Or to restore a  database:
 
 {% include copy-clipboard.html %}
 ~~~ sql
-> RESTORE DATABASE bank FROM '<backup_location>';
+> RESTORE DATABASE bank FROM '{destination}';
 ~~~
 
 Or to restore your full cluster:
 
 {% include copy-clipboard.html %}
 ~~~ sql
-> RESTORE FROM '<backup_location>';
+> RESTORE FROM '{destination}';
 ~~~
 
 {{site.data.alerts.callout_info}}
@@ -86,25 +86,25 @@ Periodically run the [`BACKUP`][backup] command to take a full backup of your cl
 
 {% include copy-clipboard.html %}
 ~~~ sql
-> BACKUP TO '<backup_location>';
+> BACKUP INTO '{destination}';
 ~~~
 
-Then, create nightly incremental backups based off of the full backups you've already created. If you backup to a destination already containing a full backup, an incremental backup will be appended to the full backup in a subdirectory:
+Then, create nightly incremental backups based off of the full backups you've already created. To append an incremental backup to the most recent full backup created in the given destination, use `LATEST`:
 
 {% include copy-clipboard.html %}
 ~~~ sql
-> BACKUP TO '<backup_location>';
+> BACKUP INTO LATEST IN '{destination}';
 ~~~
 
 {{site.data.alerts.callout_info}}
 For an example on how to specify the destination of an incremental backup, see [Take Full and Incremental Backups](take-full-and-incremental-backups.html#incremental-backups-with-explicitly-specified-destinations)
 {{site.data.alerts.end}}
 
-If it's ever necessary, you can then use the [`RESTORE`][restore] command to restore your cluster, database(s), and/or table(s). [Restoring from incremental backups](restore.html#restore-from-incremental-backups) requires previous full and incremental backups. To restore from a destination containing the full backup, as well as the automatically appended incremental backups (that are stored as subdirectories, like in the example above):
+If it's ever necessary, you can then use the [`RESTORE`][restore] command to restore your cluster, database(s), and/or table(s). Restoring from incremental backups requires previous full and incremental backups. To restore from a destination containing the full backup, as well as the appended incremental backups:
 
 {% include copy-clipboard.html %}
 ~~~ sql
-> RESTORE FROM '<backup_location>';
+> RESTORE FROM '{subdirectory}' IN '{destination}';
 ~~~
 
 ## Incremental backups with explicitly specified destinations
@@ -113,10 +113,9 @@ To explicitly control where your incremental backups go, use the [`INCREMENTAL F
 
 {% include copy-clipboard.html %}
 ~~~ sql
-> BACKUP DATABASE bank \
-TO 'gs://acme-co-backup/db/bank/2017-03-29-nightly' \
-AS OF SYSTEM TIME '-10s' \
-INCREMENTAL FROM 'gs://acme-co-backup/database-bank-2017-03-27-weekly', 'gs://acme-co-backup/database-bank-2017-03-28-nightly' WITH revision_history;
+> BACKUP DATABASE bank INTO '{subdirectory}' IN '{destination}' \
+    AS OF SYSTEM TIME '-10s' \
+    WITH revision_history;
 ~~~
 
 {{site.data.alerts.callout_info}}
@@ -127,7 +126,7 @@ To take incremental backups, you need an [enterprise license](enterprise-licensi
 
 ### Automated full backups
 
-Both core and enterprise users can use backup scheduling for full backups of clusters, databases, or tables. To create schedules that only take full backups, included the `FULL BACKUP ALWAYS` clause. For example, to create a schedule for taking full cluster backups:
+Both core and enterprise users can use backup scheduling for full backups of clusters, databases, or tables. To create schedules that only take full backups, include the `FULL BACKUP ALWAYS` clause. For example, to create a schedule for taking full cluster backups:
 
 {% include copy-clipboard.html %}
 ~~~ sql
