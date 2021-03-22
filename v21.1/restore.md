@@ -318,7 +318,7 @@ WITH into_db = 'newdb';
 - [Take and Restore Encrypted Backups](take-and-restore-encrypted-backups.html)
 - [Take and Restore Locality-aware Backups](take-and-restore-locality-aware-backups.html)
 - [Take Backups with Revision History and Restore from a Point-in-time](take-backups-with-revision-history-and-restore-from-a-point-in-time.html)
--  [Manage a Backup Schedule](manage-a-backup-schedule.html)
+- [Manage a Backup Schedule](manage-a-backup-schedule.html)
 - [Configure Replication Zones](configure-replication-zones.html)
 - [`ENUM`](enum.html)
 - [`CREATE TYPE`](create-type.html)
