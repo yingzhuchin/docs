@@ -16,9 +16,16 @@ jobs:
         id: changed_files
         uses: tj-actions/changed-files@v4.2
         
+      - name: Format changed files
+        run: |
+          for file in "${{ steps.changed_files.outputs.all_modified_files }}"; do
+            file = "$file\n"
+          done
+        
       - name: Create comment
         uses: peter-evans/create-or-update-comment@v1
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
+            Files changed:
             ${{ steps.changed_files.outputs.all_modified_files }}
