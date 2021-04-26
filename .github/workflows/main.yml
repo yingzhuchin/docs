@@ -13,10 +13,10 @@ jobs:
           fetch-depth: 2
           
       - name: Get changed files
-        id: changed_files
         uses: tj-actions/changed-files@v4.2
         
       - name: Format changed files
+        id: changed_files
         run: |
           for file in "${{ steps.changed_files.outputs.all_modified_files }}"; do
             file = "$file\n"
