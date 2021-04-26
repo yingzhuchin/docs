@@ -16,7 +16,7 @@ jobs:
         id: changed_files
         uses: tj-actions/changed-files@v4.2
         with:
-          separator: ","
+          separator: "\\n"
         
       - name: Create comment
         uses: peter-evans/create-or-update-comment@v1
