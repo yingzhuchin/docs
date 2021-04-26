@@ -6,7 +6,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    name: Get list of files changed
     steps:
       - uses: actions/checkout@v2
         with:
@@ -18,7 +17,8 @@ jobs:
         with:
           separator: ","
           
-      - id: get-comment-body
+      - name: Format list of changed files
+        id: format
         run: |
           body=${{ steps.changed_files.outputs.all_modified_files }}
           body="${body//,/$'\n'}"
@@ -31,4 +31,5 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
             Files changed:
-            ${{ steps.get-comment-body.outputs.body }}
+            
+            ${{ steps.format.outputs.body }}
