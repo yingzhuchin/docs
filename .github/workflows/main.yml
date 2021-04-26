@@ -15,8 +15,6 @@ jobs:
       - name: Get changed files
         id: changed_files
         uses: tj-actions/changed-files@v4.2
-        with:
-          separator: "\\r"
           
       - name: List all modified files
         run: |
