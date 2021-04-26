@@ -21,7 +21,8 @@ jobs:
       - id: get-comment-body
         run: |
           body=${{ steps.changed_files.outputs.all_modified_files }}
-          body="${body//','/'%0D'}" 
+          body=echo $body | tr , '\n'
+          body="${body//$'\n'/'%0A'}"
           echo ::set-output name=body::$body
         
       - name: Create comment
