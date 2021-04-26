@@ -18,16 +18,15 @@ jobs:
         with:
           separator: ","
           
-      - uses: bluwy/substitute-string-action@v1
-        id: sub
-        with:
-          _input-text: ${{ steps.changed_files.outputs.all_modified_files }}
-          ,: '%0A'
+      - id: get-comment-body
+        run: |
+          body=${{ steps.changed_files.outputs.all_modified_files }}
+          echo ::set-output name=body::$body
         
       - name: Create comment
         uses: peter-evans/create-or-update-comment@v1
         with:
           issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ${{ steps.sub.outputs.result }}
-    # ${{ steps.changed_files.outputs.all_modified_files }}
+          body: ${{ steps.get-comment-body.outputs.body }}
+#          body: |
+#            ${{ steps.changed_files.outputs.all_modified_files }}
