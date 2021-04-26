@@ -16,7 +16,13 @@ jobs:
         id: changed_files
         uses: tj-actions/changed-files@v4.2
         with:
-          separator: ", "
+          separator: "\n"
+          
+      - name: List all modified files
+        run: |
+          for file in "${{ steps.changed_files.outputs.all_modified_files }}"; do
+            echo "$file"
+          done
         
       - name: Create comment
         uses: peter-evans/create-or-update-comment@v1
