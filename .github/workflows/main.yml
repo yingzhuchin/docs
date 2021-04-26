@@ -1,4 +1,4 @@
-name: List files changed
+name: List files changed as GitHub comment
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    name: Test changed-files
+    name: Get list of files changed
     steps:
       - uses: actions/checkout@v2
         with:
@@ -20,9 +20,10 @@ jobs:
       - name: Get changed files
         id: changed_files
         uses: tj-actions/changed-files@v4.2
-      
-      - name: List all modified files
-        run: |
-          for file in "${{ steps.changed_files.outputs.all_modified_files }}"; do
-            echo "$file"
-          done
+        
+      - name: Create comment
+        uses: peter-evans/create-or-update-comment@v1
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ${{ steps.changed_files.outputs.all_modified_files }}
