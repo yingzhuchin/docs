@@ -1,12 +1,7 @@
 name: List files changed as GitHub comment
 
 on:
-  push:
-    branches-ignore:
-      - master
-  pull_request:
-    branches-ignore:
-      - master
+  pull_request
       
 jobs:
   test:
