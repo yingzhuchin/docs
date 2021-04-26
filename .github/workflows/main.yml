@@ -16,19 +16,11 @@ jobs:
         id: changed_files
         uses: tj-actions/changed-files@v4.2
         with:
-          separator: "\\n"
-          
-      - name: Format comment
-        id: format-comment
-        run: |
-          body=$(cat ${{ steps.changed_files.outputs.all_modified_files }})
-          body="${body//$'\n'/'%0A'}"
-          echo ::set-output name=body::$body
+          separator: ", "
         
       - name: Create comment
         uses: peter-evans/create-or-update-comment@v1
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ${{ steps.format-comment.outputs.body }}
-# ${{ steps.changed_files.outputs.all_modified_files }}
+            ${{ steps.changed_files.outputs.all_modified_files }}
