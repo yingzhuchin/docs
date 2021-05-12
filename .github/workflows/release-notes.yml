@@ -1,0 +1,14 @@
+name: Checkout CRDB repo 
+
+on:
+  pull_request
+      
+jobs:
+  checkout-repo:  
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: cockroachdb/cockroach
+          path: cockroach
+          fetch-depth: 2
